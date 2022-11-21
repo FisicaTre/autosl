@@ -8,6 +8,8 @@ import os
 from scipy.signal import hilbert
 from scipy.stats import pearsonr
 from scipy.signal import lfilter, butter
+from gwas_tools.helpers import sub_file
+from gwas_tools.helpers import dag_file
 
 
 SL_DATA = "./data/sl"
@@ -15,7 +17,7 @@ NO_SL_DATA = "./data/no_sl"
 LAMBDA = 1.064
 PREDICTOR = "SUS-ETMX_L2_WIT_L_DQ"
 FS = 100
-INTERVAL = 30
+INTERVAL = 31
 MAX_IMFS = 10
 SMOOTH_WIN = 50
 CORR_THR = 0.7
@@ -24,8 +26,7 @@ LOWPASS = 80
 
 def get_glitches(gps1, gps2, save_path=None):
     glitches_list = EventTable.fetch("gravityspy", "glitches_v2d0",
-                                     selection=[ # "ml_label=Scattered_Light",
-                                                "0.9<=ml_confidence<=1.0",
+                                     selection=["0.9<=ml_confidence<=1.0",
                                                 "10<=snr<=20",
                                                 "ifo=L1",
                                                 "{}<event_time<{}".format(gps1, gps2)],
@@ -111,16 +112,16 @@ if __name__ == "__main__":
         imfs = pytvfemd.tvfemd(filtered_channel, max_imf=MAX_IMFS + 1)
         imfs = (imfs - np.nanmean(imfs, axis=0)) / np.nanstd(imfs, axis=0)
         for nimf in imfs.shape[1]:
-            file_name = "t{:d}_fs{:d}_imf{:d}".format(g.peak_time, FS, nimf + 1)
+            file_name = "t{:d}_fs{:d}_imf{:d}.dat".format(g.peak_time, FS, nimf + 1)
+            upper_env = upper_envelope(imfs[:, nimf])[1:]
+            ia = smooth(upper_env[FS:-FS], SMOOTH_WIN)
             if g.ml_label == "Scattered_Light":
-                predictor = get_predictor(data_dict[channels_list[1]].value, FS, SMOOTH_WIN)
-                upper_env = upper_envelope(imfs[:, nimf])[1:]
-                upper_env = smooth(upper_env, SMOOTH_WIN)
-                corr = get_correlation_between(predictor, upper_env)
+                predictor = get_predictor(data_dict[channels_list[1]].value, FS, SMOOTH_WIN)[FS:-FS]
+                corr = get_correlation_between(predictor, ia)
                 if np.isnan(corr) or corr < CORR_THR:
-                    np.savetxt(os.path.join(NO_SL_DATA, file_name), imfs[:, nimf])
+                    np.save(os.path.join(NO_SL_DATA, file_name), ia)
                 else:
-                    np.savetxt(os.path.join(SL_DATA, file_name), imfs[:, nimf])
+                    np.save(os.path.join(SL_DATA, file_name), ia)
             else:
-                np.savetxt(os.path.join(NO_SL_DATA, file_name), imfs[:, nimf])
+                np.save(os.path.join(NO_SL_DATA, file_name), ia)
         break
