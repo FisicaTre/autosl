@@ -1,27 +1,13 @@
 from gwpy.table import EventTable
 from gwpy.time import to_gps
 import pandas as pd
-import numpy as np
-from gwpy.timeseries import TimeSeriesDict
-import pytvfemd
 import os
-from scipy.signal import hilbert
-from scipy.stats import pearsonr
-from scipy.signal import lfilter, butter
 from gwas_tools.helpers import sub_file
 from gwas_tools.helpers import dag_file
 
 
-SL_DATA = "./data/sl"
-NO_SL_DATA = "./data/no_sl"
-LAMBDA = 1.064
-PREDICTOR = "SUS-ETMX_L2_WIT_L_DQ"
-FS = 100
-INTERVAL = 31
-MAX_IMFS = 10
-SMOOTH_WIN = 50
-CORR_THR = 0.7
-LOWPASS = 80
+ANALYSIS_PATH = "/home/stefano.bianchi/analyses/autosl"
+ACCOUNTING_GROUP = "ligo.prod.o3.detchar.explore.test"
 
 
 def get_glitches(gps1, gps2, save_path=None):
@@ -42,86 +28,33 @@ def get_glitches(gps1, gps2, save_path=None):
     return glitches_list
 
 
-def ifo_and_channel(s_ifo, s_channel):
-    return s_ifo + ":" + s_channel
-
-
-def butter_lowpass(cutoff, f_samp, order=3):
-    nyq = 0.5 * f_samp
-    normal_cutoff = cutoff / nyq
-    response = butter(order, normal_cutoff, btype="lowpass", output="ba", analog=False)
-
-    return response[0], response[1]
-
-
-def butter_lowpass_filter(x, cutoff, f_samp, order=3):
-    b, a = butter_lowpass(cutoff, f_samp, order=order)
-    y = lfilter(b, a, x)
-
-    return y
-
-
-def smooth(arr, win):
-    if win % 2 == 0:
-        win += 1
-    out = np.convolve(arr, np.ones(win, dtype=int), "valid") / win
-    r = np.arange(1, win - 1, 2)
-    start = np.cumsum(arr[:win - 1])[::2] / r
-    stop = (np.cumsum(arr[:-win:-1])[::2] / r)[::-1]
-
-    return np.concatenate((start, out, stop))
-
-
-def get_predictor(channel, fs, smooth_win=None, n_scattering=1):
-    time = np.arange(0, len(channel) / fs, 1 / fs, dtype=float)
-    v_mat = np.diff(channel) / np.diff(time)
-    if smooth_win is not None:
-        v_mat = smooth(v_mat, smooth_win)
-    pred = n_scattering * (2 / LAMBDA) * np.abs(v_mat)
-
-    return pred
-
-
-def upper_envelope(ts):
-    analytic_signal = hilbert(ts)
-    upp_env = np.abs(analytic_signal)
-
-    return upp_env
-
-
-def get_correlation_between(x, y):
-    r_corr, _ = pearsonr(x, y)
-
-    return r_corr
-
-
 if __name__ == "__main__":
-    t1, t2 = to_gps("2019-04-01"), to_gps("2020-03-27")
-    glitches = pd.read_csv("./glitches.csv")
+    # t1, t2 = to_gps("2019-04-01"), to_gps("2020-03-27")
     # glitches = get_glitches(t1, t2, "./glitches.csv")
+    glitches = pd.read_csv("./glitches.csv")
 
+    # write sub
+    sub_name = "autosl.sub"
+    job_sub = sub_file.SubFile(sub_name)
+    job_sub.add_executable("job.py")
+    job_sub.add_arguments("--ifo $(IFO) --channel $(CHN) --ml_label $(MLB) --peak_time $(PKT) "
+                          "--opath {}".format(ANALYSIS_PATH))
+    job_sub.add_accounting_group_info(ACCOUNTING_GROUP, os.path.expandvars("$USER"))
+    job_sub.add_specs(3, 1000, disk=20000)
+    job_sub.add("periodic_remove = (time() - EnteredCurrentStatus) > 3600")
+    job_logs = os.path.join(ANALYSIS_PATH, "logs")
+    os.system("mkdir -p {}".format(job_logs))
+    job_sub.add_logs(job_logs, job_logs, ["$(PKT)"])
+    job_sub.save()
+
+    # write dag
+    dag_name = "autosl.dag"
+    dag = dag_file.DagFile(dag_name)
     for i, g in glitches.iterrows():
-        channels_list = [ifo_and_channel(g.ifo, g.channel)]
-        if g.ml_label == "Scattered_Light":
-            channels_list.append(ifo_and_channel(g.ifo, PREDICTOR))
-        data_dict = TimeSeriesDict.get(channels_list, g.peak_time - INTERVAL, g.peak_time + INTERVAL)
-        data_dict.resample(FS)
+        dag.add_job(i + 1, sub_name, args={"IFO": g.ifo, "CHN": g.channel,
+                                           "MLB": g.ml_label, "PKT": g.peak_time})
+    dag.save()
 
-        filtered_channel = butter_lowpass_filter(data_dict[channels_list[0]].value, LOWPASS, FS)
-
-        imfs = pytvfemd.tvfemd(filtered_channel, max_imf=MAX_IMFS + 1)
-        imfs = (imfs - np.nanmean(imfs, axis=0)) / np.nanstd(imfs, axis=0)
-        for nimf in imfs.shape[1]:
-            file_name = "t{:d}_fs{:d}_imf{:d}.dat".format(g.peak_time, FS, nimf + 1)
-            upper_env = upper_envelope(imfs[:, nimf])[1:]
-            ia = smooth(upper_env[FS:-FS], SMOOTH_WIN)
-            if g.ml_label == "Scattered_Light":
-                predictor = get_predictor(data_dict[channels_list[1]].value, FS, SMOOTH_WIN)[FS:-FS]
-                corr = get_correlation_between(predictor, ia)
-                if np.isnan(corr) or corr < CORR_THR:
-                    np.save(os.path.join(NO_SL_DATA, file_name), ia)
-                else:
-                    np.save(os.path.join(SL_DATA, file_name), ia)
-            else:
-                np.save(os.path.join(NO_SL_DATA, file_name), ia)
-        break
+    # delete previous dag output files and submit dag file
+    os.system("rm -rf {}.*".format(dag_name))
+    # os.system("condor_submit_dag -maxjobs 100 {}".format(dag_name))

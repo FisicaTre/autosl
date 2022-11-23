@@ -1,2 +1,7 @@
 *.csv
 .idea/
+data/
+logs/
+*.sub
+*.dag
+*.dag.*
