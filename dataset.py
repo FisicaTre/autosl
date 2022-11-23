@@ -6,7 +6,7 @@ from gwas_tools.helpers import sub_file
 from gwas_tools.helpers import dag_file
 
 
-ANALYSIS_PATH = "/home/stefano.bianchi/analyses/autosl"
+ANALYSIS_PATH = os.path.expandvars("$HOME/analyses/autosl")
 ACCOUNTING_GROUP = "ligo.prod.o3.detchar.explore.test"
 
 
@@ -36,9 +36,9 @@ if __name__ == "__main__":
     # write sub
     sub_name = "autosl.sub"
     job_sub = sub_file.SubFile(sub_name)
-    job_sub.add_executable("job.py")
+    job_sub.add_executable(os.path.join(ANALYSIS_PATH, "job.py"))
     job_sub.add_arguments("--ifo $(IFO) --channel $(CHN) --ml_label $(MLB) --peak_time $(PKT) "
-                          "--opath {}".format(ANALYSIS_PATH))
+                          "--out_path {}".format(ANALYSIS_PATH))
     job_sub.add_accounting_group_info(ACCOUNTING_GROUP, os.path.expandvars("$USER"))
     job_sub.add_specs(3, 1000, disk=20000)
     job_sub.add("periodic_remove = (time() - EnteredCurrentStatus) > 3600")
@@ -51,10 +51,10 @@ if __name__ == "__main__":
     dag_name = "autosl.dag"
     dag = dag_file.DagFile(dag_name)
     for i, g in glitches.iterrows():
-        dag.add_job(i + 1, sub_name, args={"IFO": g.ifo, "CHN": g.channel,
+        dag.add_job(i + 1, os.path.join(ANALYSIS_PATH, sub_name), args={"IFO": g.ifo, "CHN": g.channel,
                                            "MLB": g.ml_label, "PKT": g.peak_time})
     dag.save()
 
     # delete previous dag output files and submit dag file
     os.system("rm -rf {}.*".format(dag_name))
-    # os.system("condor_submit_dag -maxjobs 100 {}".format(dag_name))
+    os.system("condor_submit_dag -maxjobs 200 {}".format(dag_name))
