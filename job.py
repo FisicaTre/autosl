@@ -28,7 +28,7 @@ def ifo_and_channel(s_ifo, s_channel):
 def butter_lowpass(cutoff, f_samp, order=3):
     nyq = 0.5 * f_samp
     normal_cutoff = cutoff / nyq
-    response = butter(order, normal_cutoff, btype="lowpass", output="ba", analog=False)
+    response = butter(order, normal_cutoff, btype="lowpass", output="ba", analog=False, fs=f_samp)
 
     return response[0], response[1]
 
@@ -101,7 +101,7 @@ if __name__ == "__main__":
 
     imfs = pytvfemd.tvfemd(filtered_channel, max_imf=MAX_IMFS + 1)
     imfs = (imfs - np.nanmean(imfs, axis=0)) / np.nanstd(imfs, axis=0)
-    for nimf in imfs.shape[1]:
+    for nimf in range(imfs.shape[1]):
         file_name = "t{:d}_fs{:d}_imf{:d}.dat".format(peak_time, FS, nimf + 1)
         upper_env = upper_envelope(imfs[:, nimf])[1:]
         ia = smooth(upper_env[FS:-FS], SMOOTH_WIN)
