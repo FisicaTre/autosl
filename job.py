@@ -80,7 +80,7 @@ if __name__ == "__main__":
     ap.add_argument("--channel", required=True, help="channel")
     ap.add_argument("--ml_label", required=True, help="ML label")
     ap.add_argument("--peak_time", required=True, type=int, help="glitch time")
-    ap.add_argument("--peak_freq", required=True, help="glitch peak frequency")
+    ap.add_argument("--peak_freq", required=True, type=float, help="glitch peak frequency")
     ap.add_argument("--out_path", required=True, help="absolute path of the output results")
     args = vars(ap.parse_args())
 

@@ -38,7 +38,7 @@ if __name__ == "__main__":
     job_sub = sub_file.SubFile(sub_name)
     job_sub.add_executable(os.path.join(ANALYSIS_PATH, "job.py"))
     job_sub.add_arguments("--ifo $(IFO) --channel $(CHN) --ml_label $(MLB) --peak_time $(PKT) "
-                          "--peak_freq $(PKF) --opath {}".format(ANALYSIS_PATH))
+                          "--peak_freq $(PKF) --out_path {}".format(ANALYSIS_PATH))
     job_sub.add_accounting_group_info(ACCOUNTING_GROUP, os.path.expandvars("$USER"))
     job_sub.add_specs(3, 1000, disk=20000)
     job_sub.add("periodic_remove = (time() - EnteredCurrentStatus) > 3600")
