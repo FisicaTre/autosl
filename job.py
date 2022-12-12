@@ -19,7 +19,6 @@ INTERVAL = 31
 MAX_IMFS = 10
 SMOOTH_WIN = 50
 CORR_THR = 0.7
-LOWPASS = 80
 
 
 def ifo_and_channel(s_ifo, s_channel):
@@ -81,6 +80,7 @@ if __name__ == "__main__":
     ap.add_argument("--channel", required=True, help="channel")
     ap.add_argument("--ml_label", required=True, help="ML label")
     ap.add_argument("--peak_time", required=True, type=int, help="glitch time")
+    ap.add_argument("--peak_freq", required=True, help="glitch peak frequency")
     ap.add_argument("--out_path", required=True, help="absolute path of the output results")
     args = vars(ap.parse_args())
 
@@ -88,6 +88,7 @@ if __name__ == "__main__":
     channel = args["channel"]
     ml_label = args["ml_label"]
     peak_time = args["peak_time"]
+    peak_freq = args["peak_freq"]
     out_path = args["out_path"]
 
     channels_list = [ifo_and_channel(ifo, channel)]
@@ -96,7 +97,7 @@ if __name__ == "__main__":
     data_dict = TimeSeriesDict.get(channels_list, peak_time - INTERVAL, peak_time + INTERVAL)
     data_dict.resample(FS)
 
-    filtered_channel = butter_lowpass_filter(data_dict[channels_list[0]].value, LOWPASS, FS)
+    filtered_channel = butter_lowpass_filter(data_dict[channels_list[0]].value, peak_freq, FS)
 
     imfs = pytvfemd.tvfemd(filtered_channel, max_imf=MAX_IMFS + 1)
     imfs = (imfs - np.nanmean(imfs, axis=0)) / np.nanstd(imfs, axis=0)
