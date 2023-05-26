@@ -8,10 +8,13 @@ from scipy.signal import lfilter, butter
 from scipy.signal import hilbert
 from scipy.stats import pearsonr
 import argparse
+import FIF
 
 
-SL_DATA = os.path.join("data", "sl")
-NO_SL_DATA = os.path.join("data", "no_sl")
+SL_DATA_FIF = os.path.join("data", "sl_fif")
+NO_SL_DATA_FIF = os.path.join("data", "no_sl_fif")
+SL_DATA_TVF = os.path.join("data", "sl_tvf")
+NO_SL_DATA_TVF = os.path.join("data", "no_sl_tvf")
 LAMBDA = 1.064
 PREDICTOR = "SUS-ETMX_L2_WIT_L_DQ"
 FS = 100
@@ -99,18 +102,38 @@ if __name__ == "__main__":
 
     filtered_channel = butter_lowpass_filter(data_dict[channels_list[0]].value, peak_freq, FS)
 
-    imfs = pytvfemd.tvfemd(filtered_channel, max_imf=MAX_IMFS + 1)
-    imfs = (imfs - np.nanmean(imfs, axis=0)) / np.nanstd(imfs, axis=0)
-    for nimf in range(imfs.shape[1]):
+    # FIF
+    fif = FIF.FIF()
+    fif.run(filtered_channel)
+    imfs_fif = np.transpose(fif.data["IMC"])[:, :MAX_IMFS]
+    imfs_fif = (imfs_fif - np.nanmean(imfs_fif, axis=0)) / np.nanstd(imfs_fif, axis=0)
+    for nimf in range(imfs_fif.shape[1]):
         file_name = "t{:d}_fs{:d}_imf{:d}.dat".format(peak_time, FS, nimf + 1)
-        upper_env = upper_envelope(imfs[:, nimf])[1:]
+        upper_env = upper_envelope(imfs_fif[:, nimf])[1:]
         ia = smooth(upper_env[FS:-FS], SMOOTH_WIN)
         if ml_label == "Scattered_Light":
             predictor = get_predictor(data_dict[channels_list[1]].value, FS, SMOOTH_WIN)[FS:-FS]
             corr = get_correlation_between(predictor, ia)
             if np.isnan(corr) or corr < CORR_THR:
-                np.save(os.path.join(out_path, NO_SL_DATA, file_name), ia)
+                np.save(os.path.join(out_path, NO_SL_DATA_FIF, file_name), ia)
             else:
-                np.save(os.path.join(out_path, SL_DATA, file_name), ia)
+                np.save(os.path.join(out_path, SL_DATA_FIF, file_name), ia)
         else:
-            np.save(os.path.join(out_path, NO_SL_DATA, file_name), ia)
+            np.save(os.path.join(out_path, NO_SL_DATA_FIF, file_name), ia)
+
+    # TVF
+    imfs_tvf = pytvfemd.tvfemd(filtered_channel, max_imf=MAX_IMFS + 1)
+    imfs_tvf = (imfs_tvf - np.nanmean(imfs_tvf, axis=0)) / np.nanstd(imfs_tvf, axis=0)
+    for nimf in range(imfs_tvf.shape[1]):
+        file_name = "t{:d}_fs{:d}_imf{:d}.dat".format(peak_time, FS, nimf + 1)
+        upper_env = upper_envelope(imfs_tvf[:, nimf])[1:]
+        ia = smooth(upper_env[FS:-FS], SMOOTH_WIN)
+        if ml_label == "Scattered_Light":
+            predictor = get_predictor(data_dict[channels_list[1]].value, FS, SMOOTH_WIN)[FS:-FS]
+            corr = get_correlation_between(predictor, ia)
+            if np.isnan(corr) or corr < CORR_THR:
+                np.save(os.path.join(out_path, NO_SL_DATA_TVF, file_name), ia)
+            else:
+                np.save(os.path.join(out_path, SL_DATA_TVF, file_name), ia)
+        else:
+            np.save(os.path.join(out_path, NO_SL_DATA_TVF, file_name), ia)
