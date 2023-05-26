@@ -31,7 +31,7 @@ def get_glitches(gps1, gps2, save_path=None):
 if __name__ == "__main__":
     # t1, t2 = to_gps("2019-04-01"), to_gps("2020-03-27")
     # glitches = get_glitches(t1, t2, "./glitches.csv")
-    glitches = pd.read_csv("./glitches.csv")
+    glitches = pd.read_csv("./glitches_short.csv")
 
     # write sub
     sub_name = "autosl.sub"
